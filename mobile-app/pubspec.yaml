@@ -1,0 +1,44 @@
+name: mobile_app
+description: AI Interview System Flutter Client
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Core HTTP wrapper
+  http: ^1.1.0
+  
+  # Auth
+  firebase_core: ^2.15.1
+  firebase_auth: ^4.9.0
+  
+  # Device tracking for the 5 limit logic
+  device_info_plus: ^9.0.3
+  
+  # Payments / Subscriptions for Video Tier
+  purchases_flutter: ^6.1.0 # RevenueCat
+  
+  # State Management (optional/popular)
+  provider: ^6.0.5
+
+  # Added for full feature compatibility
+  shared_preferences: ^2.2.3
+  google_fonts: ^6.2.1
+  fl_chart: ^0.68.0
+  camera: ^0.10.5+9
+  record: ^5.0.5
+  audioplayers: ^6.0.0
+  flutter_spinkit: ^8.0.1
+  lucide_icons: ^0.1.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true

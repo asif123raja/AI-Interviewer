@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PORT=3000
+    env_file:
+      - .env.example # Provide fallback if actual .env doesn't exist
+    depends_on:
+      - redis
+
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - VECTOR_DB_URL=http://qdrant:6333
+    env_file:
+      - .env.example
+    depends_on:
+      - qdrant
+
+  web-client:
+    build:
+      context: ./web-client
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3001:3000" # Map host 3001 to container 3000
+    env_file:
+      - .env.example
+
+  mobile-app:
+    build:
+      context: ./mobile-app
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "8080:80" # Map host 8080 to Nginx container port 80
+
+volumes:
+  redis_data:
+  qdrant_data:

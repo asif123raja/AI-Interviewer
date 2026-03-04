@@ -1,0 +1,172 @@
+// This is your Prisma schema file.
+// Learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String            @id @default(uuid())
+  email            String            @unique
+  firebaseUid      String?           @unique // Required for Firebase Auth mapping
+  name             String?
+  avatarUrl        String?
+  role             String            @default("USER") // USER, ADMIN
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  
+  subscriptions    Subscription[]
+  interviewUsages  InterviewUsage[]
+  deviceUsages     DeviceUsage[]     // Backwards compatibility for free tier
+  interviewSessions InterviewSession[]
+  interviewReports InterviewReport[]
+}
+
+// Tracks device usage for the free tier (Voice limit)
+model DeviceUsage {
+  id             String   @id @default(uuid())
+  deviceId       String   @unique // Generated from the mobile app
+  userId         String?  // Optional link if user is logged in
+  voiceUsedCount Int      @default(0) // Free tier allows 5
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model Subscription {
+  id             String   @id @default(uuid())
+  userId         String
+  planType       String   // e.g., 'monthly', 'yearly', 'pro'
+  startDate      DateTime
+  endDate        DateTime
+  status         String   // e.g., 'active', 'expired', 'canceled'
+  revenueCatId   String?  @unique // Tracking sub via RevenueCat or Stripe ID
+  
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// Tracks monthly usage limits for Video and Voice
+model InterviewUsage {
+  id          String   @id @default(uuid())
+  userId      String
+  monthYear   String   // e.g., "2026-02"
+  videoCount  Int      @default(0) // Paid tier allows 20 per month
+  voiceCount  Int      @default(0)
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, monthYear]) // One record per user per month
+}
+
+// --- NEW TAXONOMY MODELS ---
+
+model Domain {
+  id          String     @id @default(uuid())
+  name        String     @unique // e.g., 'Software Engineering', 'Medical'
+  description String?
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  subtopics   Subtopic[]
+  sessions    InterviewSession[]
+}
+
+model Subtopic {
+  id          String     @id @default(uuid())
+  domainId    String
+  name        String     // e.g., 'React JS', 'System Design'
+  description String?
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  domain      Domain     @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  sessions    InterviewSession[]
+  questions   Question[]
+
+  @@unique([domainId, name])
+}
+
+// Bank of standard questions for specific subtopics
+model Question {
+  id          String   @id @default(uuid())
+  subtopicId  String
+  text        String   @db.Text
+  difficulty  String   @default("Medium") // EASY, MEDIUM, HARD
+  createdAt   DateTime @default(now())
+
+  subtopic    Subtopic @relation(fields: [subtopicId], references: [id], onDelete: Cascade)
+}
+
+// --- INTERVIEW EXECUTION ---
+
+model InterviewSession {
+  id                 String   @id @default(uuid())
+  userId             String
+  domainId           String
+  subtopicId         String?
+  interviewType      String   // "voice" or "video" - also technically used for new style "technical", "behavioral", "mixed"
+  experienceLevel    String   @default("intermediate") // "beginner", "intermediate", "advanced"
+  difficulty         String   @default("medium") // "easy", "medium", "hard"
+  numberOfQuestions  Int      @default(5)
+  timeLimitMinutes   Int      @default(30)
+  customPrompt       String?  @db.Text
+  status             String   @default("CREATED") // CREATED, IN_PROGRESS, COMPLETED, FAILED
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  domain             Domain   @relation(fields: [domainId], references: [id])
+  subtopic           Subtopic? @relation(fields: [subtopicId], references: [id])
+  report             InterviewReport?
+  
+  @@index([userId])
+}
+
+// Stores the LLM Analysis Report generated by the Python ML Service
+model InterviewReport {
+  id                 String   @id @default(uuid())
+  sessionId          String?  @unique
+  userId             String
+  
+  // High-level analytics generated from the ML embeddings locally
+  avgConfidenceScore Float?
+  anxietyScore       Float?
+  nervousMoments     Int?
+  smileFrequency     Float?
+  eyeContactRatio    Float?
+  communication      Float?   
+  engagement         Float?   
+  
+  // The complete detailed JSON representation of the entire response, timings, and feedback
+  fullReport         Json?    
+  videoUrl           String?  // Kept if user opts to save it to their cloud
+  
+  createdAt          DateTime @default(now())
+
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session            InterviewSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  // Legacy mappings for existing controller code
+  domain             String?  @default("General")
+  subtopic           String?
+  customPrompt       String?  @db.Text
+  interviewType      String?  @default("video")
+
+  @@index([userId])
+}
