@@ -49,6 +49,7 @@ export function VideoRecorder({ config }: VideoRecorderProps) {
     const [questionNumber, setQuestionNumber] = useState(0);
     const [totalQuestions, setTotalQuestions] = useState(5); // 5 or 10 based on subscription
     const [questionsList, setQuestionsList] = useState<string[]>([]);
+    const questionsListRef = useRef<string[]>([]);
     const [isRecordingAnswer, setIsRecordingAnswer] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [qnaPairs, setQnaPairs] = useState<{ question: string; answer: string }[]>([]);
@@ -143,7 +144,7 @@ export function VideoRecorder({ config }: VideoRecorderProps) {
     };
 
     // ── Interview Logic ──────────────────────────────────────────────────────
-    const advanceToNextQuestion = (index: number, list: string[] = questionsList) => {
+    const advanceToNextQuestion = (index: number, list: string[] = questionsListRef.current) => {
         if (index < list.length) {
             const nextQ = list[index];
             updateCurrentQuestion(nextQ);
@@ -193,6 +194,7 @@ export function VideoRecorder({ config }: VideoRecorderProps) {
              });
              const generatedList = res || [];
              setQuestionsList(generatedList);
+             questionsListRef.current = generatedList;
              
              // Auto-start analyzer when interview begins
              initAnalyzer().then(() => {
