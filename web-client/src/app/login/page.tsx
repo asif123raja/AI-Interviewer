@@ -34,13 +34,13 @@ export default function LoginPage() {
     return (
         <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
             {/* Background elements */}
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-background to-background" />
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/20 via-background to-background" />
 
             <div className="relative z-10 w-full max-w-md p-8 glass-card rounded-3xl mx-4">
                 <div className="text-center mb-8">
                     <div className="flex items-center justify-center gap-2 mb-4">
                         <PlayCircle className="h-10 w-10 text-primary" />
-                        <span className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60">
+                        <span className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-indigo-500">
                             AI Interview
                         </span>
                     </div>

@@ -170,3 +170,63 @@ model InterviewReport {
 
   @@index([userId])
 }
+
+// --- SUBSCRIPTION MODULE MODELS ---
+
+model SubscriptionPlan {
+  id                          String              @id @default(uuid())
+  name                        String              @unique
+  displayName                 String
+  priceInrPaise               Int                 
+  billingCadence              String
+  maxInterviews               Int
+  maxQuestionsPerInterview    Int
+  answerTimeLimitSeconds      Int?                
+  facialAnalysisEnabled       Boolean
+  isActive                    Boolean             @default(true)
+  createdAt                   DateTime            @default(now())
+
+  userSubscriptions           UserSubscription[]
+}
+
+model UserSubscription {
+  id                      String              @id @default(uuid())
+  userId                  String
+  planId                  String
+  status                  String              
+  startedAt               DateTime            @default(now())
+  expiresAt               DateTime?           
+  razorpaySubscriptionId  String?             
+  createdAt               DateTime            @default(now())
+
+  plan                    SubscriptionPlan    @relation(fields: [planId], references: [id])
+  payments                Payment[]
+  interviewUsages         SubscriptionInterviewUsage[]
+}
+
+model Payment {
+  id                    String              @id @default(uuid())
+  userId                String
+  subscriptionId        String
+  razorpayOrderId       String
+  razorpayPaymentId     String?
+  razorpaySignature     String?
+  amountPaise           Int
+  currency              String              @default("INR")
+  status                String              
+  planName              String              
+  createdAt             DateTime            @default(now())
+
+  subscription          UserSubscription    @relation(fields: [subscriptionId], references: [id])
+}
+
+model SubscriptionInterviewUsage {
+  id                    String              @id @default(uuid())
+  userId                String
+  subscriptionId        String?
+  interviewId           String              
+  facialAnalysisUsed    Boolean
+  usedAt                DateTime            @default(now())
+
+  subscription          UserSubscription?    @relation(fields: [subscriptionId], references: [id])
+}

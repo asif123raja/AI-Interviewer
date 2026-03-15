@@ -3,33 +3,45 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { InterviewService } from './interview.service';
 import { ReportsService } from '../reports/reports.service';
 import { FirebaseAuthGuard } from '../auth/firebase-auth.guard';
+import { QuotaGuard } from '../subscriptions/guards/quota.guard';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 @Controller('interview-api')
 export class InterviewController {
     constructor(
         private readonly interviewService: InterviewService,
         private readonly reportsService: ReportsService,
+        private readonly subscriptionsService: SubscriptionsService,
     ) { }
 
     /**
-     * Generate the next dynamic interview question using AI.
+     * Start a new interview session and check subscription limits.
+     */
+    @UseGuards(FirebaseAuthGuard, QuotaGuard)
+    @Post('start')
+    async startInterview(@Req() req: any, @Body() dto: any) {
+        return this.interviewService.startInterview(dto, req.subscriptionContext);
+    }
+
+    /**
+     * Generate all dynamic interview questions upfront using AI.
      */
     @UseGuards(FirebaseAuthGuard)
-    @Post('next-question')
-    async getNextQuestion(
+    @Post('generate-questions')
+    async generateQuestions(
         @Body('domain') domain: string,
         @Body('subtopic') subtopic: string,
         @Body('experienceLevel') experienceLevel: string,
         @Body('difficulty') difficulty: string,
-        @Body('history') history: { question: string, answer: string }[],
+        @Body('totalQuestions') totalQuestions: number,
         @Body('customPrompt') customPrompt?: string
     ) {
-        return this.interviewService.generateNextQuestion(
+        return this.interviewService.generateQuestionsBatch(
             domain,
             subtopic,
             experienceLevel,
             difficulty,
-            history,
+            totalQuestions,
             customPrompt
         );
     }
@@ -140,6 +152,10 @@ export class InterviewController {
 
         const savedReport = await this.reportsService.saveReport(payload);
 
+        // Get subscription context to know if facial analysis is enabled
+        const userSubscription = await this.subscriptionsService.getMySubscription(firebaseUid);
+        const facialAnalysisEnabled = userSubscription.facialAnalysisEnabled;
+
         // Asynchronously forward the face_metrics to the Python ML service for Qdrant vector storage
         if (Object.keys(faceMetrics).length > 0) {
             try {
@@ -154,7 +170,8 @@ export class InterviewController {
                         domain: body.domain || 'General',
                         subtopic: body.subtopic,
                         custom_prompt: body.customPrompt,
-                        faceMetrics: faceMetrics
+                        faceMetrics: faceMetrics,
+                        facial_analysis_enabled: facialAnalysisEnabled
                     })
                 }).catch(e => console.error('[ML Forwarding Error]', e));
             } catch (err) { }

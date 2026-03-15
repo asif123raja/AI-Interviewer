@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import * as textToSpeech from '@google-cloud/text-to-speech';
 import { createClient } from '@deepgram/sdk';
 import OpenAI from 'openai';
+import { SubscriptionContext } from '../subscriptions/decorators/subscription-context.decorator';
 
 @Injectable()
 export class InterviewService {
@@ -58,20 +59,67 @@ export class InterviewService {
         }
     }
 
-    async generateNextQuestion(
+    async startInterview(dto: any, subscriptionContext: SubscriptionContext) {
+        const newInterview = await this.prisma.interviewSession.create({
+            data: {
+                userId: subscriptionContext.userId,
+                domainId: dto.domainId ?? (await this.getDefaultDomainId()),
+                interviewType: dto.interviewType || 'video',
+                status: 'IN_PROGRESS',
+            }
+        });
+
+        await this.logInterviewUsage(
+            subscriptionContext.userId,
+            subscriptionContext.subscriptionId === null ? undefined : subscriptionContext.subscriptionId,
+            newInterview.id,
+            subscriptionContext.facialAnalysisEnabled
+        );
+
+        return { success: true, interviewId: newInterview.id, context: subscriptionContext };
+    }
+
+    private async getDefaultDomainId(): Promise<string> {
+        let defaultDomain = await this.prisma.domain.findFirst();
+        if (!defaultDomain) {
+            defaultDomain = await this.prisma.domain.create({
+                data: { name: 'General', description: 'Default fallback domain' }
+            });
+        }
+        return defaultDomain.id;
+    }
+
+    private async logInterviewUsage(userId: string, subscriptionId: string | undefined, interviewId: string, facialAnalysisUsed: boolean) {
+        // @ts-ignore - Prisma types might be lagging in IDE
+        const dataPayload: any = {
+            userId,
+            interviewId,
+            facialAnalysisUsed
+        };
+
+        if (subscriptionId) {
+            dataPayload.subscriptionId = subscriptionId;
+        }
+
+        // @ts-ignore
+        await this.prisma.subscriptionInterviewUsage.create({
+            data: dataPayload
+        });
+    }
+
+    async generateQuestionsBatch(
         domain: string,
         subtopic: string,
         experienceLevel: string,
         difficulty: string,
-        history: { question: string, answer: string }[],
+        totalQuestions: number,
         customPrompt?: string
     ) {
         if (!this.openai) {
             throw new Error('OpenAI API is not configured.');
         }
 
-        const sessionId = Date.now(); // unique per request — forces fresh generation every time
-        const systemPrompt = `You are an expert AI interviewer. Session ID: ${sessionId}
+        const systemPrompt = `You are an expert AI interviewer. 
 Domain: ${domain || 'General Technology'}
 Experience Level: ${experienceLevel || 'Intermediate'}
 Difficulty: ${difficulty || 'Medium'}
@@ -79,46 +127,52 @@ ${subtopic ? `Subtopic: ${subtopic}` : ''}
 ${customPrompt ? `Special Instructions: ${customPrompt}` : ''}
 
 STRICT RULES:
-- Ask ONE unique question. Return ONLY the raw question text, no prefix, no numbering, no markdown.
-- NEVER repeat or rephrase a question already asked in this session.
-- NEVER start with "Tell me about yourself" for technical domains.
-- Each question must be different, specific, and progressively deeper.
-- The session ID above is unique — treat this as a completely fresh interview context.`;
-
-        const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-            { role: 'system', content: systemPrompt }
-        ];
-
-        if (history && history.length > 0) {
-            for (const item of history) {
-                messages.push({ role: 'assistant', content: item.question });
-                messages.push({ role: 'user', content: item.answer || '(no answer given)' });
-            }
-            messages.push({
-                role: 'user',
-                content: `Ask the next interview question. It must be completely different from everything asked so far and dig deeper into my performance.`
-            });
-        } else {
-            messages.push({
-                role: 'user',
-                content: `Begin the interview. Give me a sharp, specific opening question for a ${experienceLevel || 'Intermediate'} ${subtopic || domain} interview. Not generic.`
-            });
-        }
+- Generate EXACTLY ${totalQuestions} unique interview questions for this specific role and level.
+- The questions should logically progress from foundational to advanced/scenario-based.
+- Do NOT output any numbering or markdown besides a pure JSON Array format.
+- Format the response EXACTLY as a raw JSON array of strings. 
+Example: ["Question 1 text...", "Question 2 text...", "Question 3 text..."]`;
 
         try {
             const completion = await this.openai.chat.completions.create({
-                model: 'gpt-4o',
-                messages,
-                max_tokens: 200,
-                temperature: 1.0,
+                model: 'gpt-4o-mini', // using mini or 4o, since it's a batch we can safely use standard
+                messages: [{ role: 'system', content: systemPrompt }],
+                max_tokens: 1500,
+                temperature: 0.8,
+                response_format: { type: "json_object" } // to enforce JSON, though array requires wrapping
             });
-
-            const questionText = completion.choices[0]?.message?.content?.trim() || '';
-            this.logger.log(`Generated question [${history.length + 1}]: ${questionText.substring(0, 80)}`);
-            return { question: questionText };
-        } catch (error) {
-            this.logger.error(`OpenAI error generating question: ${error.message}`);
-            return { question: `Can you walk me through your experience with ${subtopic || domain} and a specific challenge you solved?` };
+            // Try to parse array directly
+            let rawContent = completion.choices[0]?.message?.content?.trim() || '[]';
+            
+            // If OpenAI wrapped it in an object (due to json_object constraint), extract it
+            let parsed;
+            try {
+                parsed = JSON.parse(rawContent);
+                if (parsed.questions && Array.isArray(parsed.questions)) {
+                    return parsed.questions;
+                }
+            } catch (e) {
+                // If pure array string without object wrap
+                if (rawContent.startsWith('[')) {
+                    parsed = JSON.parse(rawContent);
+                } else {
+                    throw new Error("Invalid output format");
+                }
+            }
+            
+            if (Array.isArray(parsed)) {
+                return parsed;
+            }
+            throw new Error("Could not parse OpenAI response into questions array");
+            
+        } catch (error: any) {
+            this.logger.error(`OpenAI error generating batch questions: ${error.message}`);
+            // Fallbacks
+            const fallbacks = [];
+            for (let i = 0; i < totalQuestions; i++) {
+                fallbacks.push(`Can you walk me through your experience with ${subtopic || domain} (Question ${i+1})?`);
+            }
+            return fallbacks;
         }
     }
 

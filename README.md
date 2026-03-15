@@ -128,3 +128,18 @@ To upload this entire architecture (all 4 sub-projects + Docker configuration) a
    ```bash
    git push -u origin main
    ```
+
+
+# Open Terminal 1
+cd "c:\Users\asifu\Documents\AI Deploy\ai-interview-system\ml-service"
+.\venv\Scripts\Activate.ps1
+uvicorn main:app --reload
+
+# Open Terminal 2
+cd "c:\Users\asifu\Documents\AI Deploy\ai-interview-system\api-gateway"
+npm run start:dev
+
+
+# Open Terminal 3
+cd "c:\Users\asifu\Documents\AI Deploy\ai-interview-system\web-client"
+npm run dev

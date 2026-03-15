@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Camera, Square, VideoOff, Loader2, Eye, EyeOff } from "lucide-react";
-import { fetchWithAuth } from "@/lib/api";
+import { fetchWithAuth, getMySubscription } from "@/lib/api";
 import { InterviewConfig } from "./InterviewSetup";
 import { FaceAnalyzer, type FaceMetrics } from "@/lib/face_analyzer";
 
@@ -25,11 +25,30 @@ export function VideoRecorder({ config }: VideoRecorderProps) {
     const [time, setTime] = useState(0);
     const [overlayVisible, setOverlayVisible] = useState(false);
     const [overlayReady, setOverlayReady] = useState(false);
+    const [timeLimit, setTimeLimit] = useState<number | null>(null);
+
+    // Fetch subscription limits
+    useEffect(() => {
+        async function fetchSub() {
+            try {
+                const sub = await getMySubscription();
+                if (sub && sub.answerTimeLimitSeconds > 0 && sub.answerTimeLimitSeconds < 100000) {
+                    setTimeLimit(sub.answerTimeLimitSeconds);
+                }
+                if (sub) {
+                    setTotalQuestions(sub.planName === 'free' ? 5 : 10);
+                }
+            } catch (e) {
+            }
+        }
+        fetchSub();
+    }, []);
 
     // Interview flow state
     const [currentQuestion, setCurrentQuestion] = useState<string | null>(null);
     const [questionNumber, setQuestionNumber] = useState(0);
-    const [totalQuestions] = useState(2); // 2 for testing
+    const [totalQuestions, setTotalQuestions] = useState(5); // 5 or 10 based on subscription
+    const [questionsList, setQuestionsList] = useState<string[]>([]);
     const [isRecordingAnswer, setIsRecordingAnswer] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [qnaPairs, setQnaPairs] = useState<{ question: string; answer: string }[]>([]);
@@ -61,6 +80,17 @@ export function VideoRecorder({ config }: VideoRecorderProps) {
         else setTime(0);
         return () => clearInterval(interval);
     }, [isRecordingAnswer]);
+
+    // Enforce Time Limit
+    useEffect(() => {
+        if (isRecordingAnswer && timeLimit && time >= timeLimit) {
+            if (mediaRecorderRef.current?.state === "recording") {
+                mediaRecorderRef.current.stop();
+                setIsRecordingAnswer(false);
+                alert(`Time limit of ${timeLimit} seconds reached! Moving to evaluation.`);
+            }
+        }
+    }, [time, isRecordingAnswer, timeLimit]);
 
     // Cleanup
     useEffect(() => {
@@ -113,40 +143,73 @@ export function VideoRecorder({ config }: VideoRecorderProps) {
     };
 
     // ── Interview Logic ──────────────────────────────────────────────────────
-    const fetchNextQuestion = async (history: { question: string; answer: string }[]) => {
+    const advanceToNextQuestion = (index: number, list: string[] = questionsList) => {
+        if (index < list.length) {
+            const nextQ = list[index];
+            updateCurrentQuestion(nextQ);
+            updateQuestionNumber(index + 1);
+            playQuestionTTS(nextQ);
+        } else {
+             submitInterview(qnaPairsRef.current);
+        }
+    };
+
+    const startInterview = async () => {
+        if (!hasPermission) return;
         setIsProcessing(true);
         try {
-            const res = await fetchWithAuth("/interview-api/next-question", {
+            await fetchWithAuth("/interview-api/start", {
                 method: "POST",
                 body: JSON.stringify({
                     domain: config.domain,
                     subtopic: config.subtopic,
                     experienceLevel: config.experienceLevel,
                     difficulty: config.difficulty,
-                    history,
-                    customPrompt: config.customPrompt,
                 }),
             });
-            updateCurrentQuestion(res.question);
-            updateQuestionNumber(questionNumberRef.current + 1);
-            playQuestionTTS(res.question);
-        } catch (e) {
-            console.error("Failed to fetch next question", e);
-            alert("Failed to load next question.");
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
-    const startInterview = () => {
-        if (!hasPermission) return;
-        // Auto-start analyzer when interview begins
-        initAnalyzer().then(() => {
-            if (videoRef.current && canvasRef.current && analyzerRef.current) {
-                analyzerRef.current.start(videoRef.current, canvasRef.current);
+        } catch (e: any) {
+            console.error("Failed to start interview quota check:", e);
+            if (e.message && e.message.includes('403')) {
+                alert("Interview blocked: You have exceeded your free or subscription limits. Please upgrade your plan in your profile.");
+            } else {
+                alert("Failed to initialize interview session.");
             }
-        });
-        fetchNextQuestion([]);
+            setIsProcessing(false);
+            return;
+        }
+
+        // Batch generate questions
+        try {
+             const res = await fetchWithAuth("/interview-api/generate-questions", {
+                method: "POST",
+                body: JSON.stringify({
+                    domain: config.domain,
+                    subtopic: config.subtopic,
+                    experienceLevel: config.experienceLevel,
+                    difficulty: config.difficulty,
+                    totalQuestions,
+                    customPrompt: config.customPrompt,
+                }),
+             });
+             const generatedList = res || [];
+             setQuestionsList(generatedList);
+             
+             // Auto-start analyzer when interview begins
+             initAnalyzer().then(() => {
+                 if (videoRef.current && canvasRef.current && analyzerRef.current) {
+                     analyzerRef.current.start(videoRef.current, canvasRef.current);
+                 }
+             });
+             
+             setIsProcessing(false);
+             advanceToNextQuestion(0, generatedList);
+
+        } catch (error) {
+             console.error("Failed to batch generate questions", error);
+             alert("Failed to load interview questions. Please try again later.");
+             setIsProcessing(false);
+             return;
+        }
     };
 
     const playQuestionTTS = async (text: string) => {
@@ -208,14 +271,14 @@ export function VideoRecorder({ config }: VideoRecorderProps) {
                     updateQnaPairs(newPairs);
 
                     if (questionNumberRef.current < totalQuestions) {
-                        await fetchNextQuestion(newPairs);
+                        advanceToNextQuestion(questionNumberRef.current);
                     } else {
                         await submitInterview(newPairs);
                     }
                 } catch {
                     const fallback = qnaPairsRef.current;
                     if (questionNumberRef.current < totalQuestions) {
-                        await fetchNextQuestion(fallback);
+                        advanceToNextQuestion(questionNumberRef.current);
                     } else {
                         await submitInterview(fallback);
                     }
@@ -391,7 +454,9 @@ export function VideoRecorder({ config }: VideoRecorderProps) {
                 {isRecordingAnswer && (
                     <div className="absolute top-6 right-6 flex items-center gap-2 bg-black/50 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 z-20">
                         <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
-                        <span className="text-white font-mono font-medium">{formatTime(time)}</span>
+                        <span className={`font-mono font-medium ${timeLimit && time >= timeLimit - 10 ? 'text-red-400 font-bold animate-pulse' : 'text-white'}`}>
+                            {formatTime(time)} {timeLimit ? `/ ${formatTime(timeLimit)}` : ''}
+                        </span>
                     </div>
                 )}
 

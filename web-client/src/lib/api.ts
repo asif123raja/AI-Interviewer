@@ -54,3 +54,35 @@ export async function fetchReports() {
 export async function fetchReportById(id: string) {
     return fetchWithAuth(`/reports/${id}`);
 }
+
+export async function fetchSubscriptionPlans() {
+    const response = await fetch(`${API_URL}/subscriptions/plans`);
+    if (!response.ok) throw new Error('Failed to fetch plans');
+    return response.json();
+}
+
+export async function getMySubscription() {
+    return fetchWithAuth('/subscriptions/me');
+}
+
+export async function createRazorpayOrder(planName: string) {
+    return fetchWithAuth('/subscriptions/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: planName })
+    });
+}
+
+export async function verifyRazorpayPayment(payload: any) {
+    return fetchWithAuth('/subscriptions/verify-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+}
+
+export async function cancelAutoRenewal() {
+    return fetchWithAuth('/subscriptions/cancel-auto-renewal', {
+        method: 'POST'
+    });
+}

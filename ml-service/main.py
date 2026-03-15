@@ -18,6 +18,7 @@ class MetricsProcessRequest(BaseModel):
     subtopic: Optional[str] = None
     custom_prompt: Optional[str] = None
     faceMetrics: Optional[Dict[str, Any]] = None
+    facial_analysis_enabled: Optional[bool] = True
 
 @app.get("/health")
 def health_check():
@@ -38,7 +39,8 @@ async def trigger_processing(request: MetricsProcessRequest, background_tasks: B
         request.domain,
         request.subtopic,
         request.custom_prompt,
-        request.faceMetrics
+        request.faceMetrics,
+        request.facial_analysis_enabled
     )
     
     return {"message": "Metrics Analysis started", "job_id": request.job_id}

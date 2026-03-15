@@ -84,11 +84,16 @@ async def execute_ml_pipeline(
     domain: str = "General",
     subtopic: str = None,
     custom_prompt: str = None,
-    face_metrics: dict = None
+    face_metrics: dict = None,
+    facial_analysis_enabled: bool = True
 ):
     print(f"\n🚀 --- STARTING LLM ANALYTICS FOR USER {user_id} --- ")
     print(f"📊 CONTEXT   -> Domain: {domain} | Subtopic: {subtopic} | Custom: {custom_prompt}")
     print(f"📈 METRICS   -> {metrics}")
+    
+    if not facial_analysis_enabled:
+        print(f"[ML PIPELINE] Skipping facial analysis features due to subscription tier limits.")
+        face_metrics = None
     
     # 1. Vector DB Temporary Storage & Timeline Calculation
     # The frontend extracted FaceMetrics via MediaPipe timeline snapshots

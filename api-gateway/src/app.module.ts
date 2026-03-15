@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsageModule } from './usage/usage.module';
 import { ReportsModule } from './reports/reports.module';
 import { InterviewModule } from './interview/interview.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { InterviewModule } from './interview/interview.module';
     UsageModule,
     ReportsModule,
     InterviewModule,
+    SubscriptionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
