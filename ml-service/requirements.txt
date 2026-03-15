@@ -13,3 +13,7 @@ opencv-python-headless==4.10.0.84
 numpy==1.26.4
 # Vector DB client
 qdrant-client==1.9.1
+
+# Missing from local but required for Hugging Face container
+mediapipe
+python-multipart
