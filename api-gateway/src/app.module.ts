@@ -10,6 +10,7 @@ import { UsageModule } from './usage/usage.module';
 import { ReportsModule } from './reports/reports.module';
 import { InterviewModule } from './interview/interview.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { HealthController } from './health/health.controller';
 
 @Module({
   imports: [
@@ -44,7 +45,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
     InterviewModule,
     SubscriptionsModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, HealthController],
   providers: [AppService],
 })
 export class AppModule { }

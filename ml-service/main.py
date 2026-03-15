@@ -1,4 +1,5 @@
 from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 import os
@@ -8,6 +9,20 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI(title="AI Interview ML Service", version="1.0.0")
+
+# Render/Vercel CORS Security Let-Through
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://hirepath-api.onrender.com",
+        "https://hirepath.vercel.app",
+        "http://localhost:3000",
+        "http://localhost:4000"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class MetricsProcessRequest(BaseModel):
     user_id: str
